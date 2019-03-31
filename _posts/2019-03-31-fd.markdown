@@ -1,0 +1,80 @@
+---
+layout: post
+title:  "fd – pwnable.kr"
+date:   2019-03-31 16:40:56 +0300
+categories: writeup pwnablekr
+---
+*Task description starts with a question:*
+> Mommy! what is a file descriptor in Linux?
+
+*Python document answers [fd]:*
+> File descriptors are small integers corresponding to a file that has been opened by the current process. For example, standard input is usually file descriptor 0, standard output is 1, and standard error is 2. Further files opened by a process will then be assigned 3, 4, 5, and so forth. The name “file descriptor” is slightly deceptive; on Unix platforms, sockets and pipes are also referenced by file descriptors.
+
+*Code of fd.c with additional comments:*
+{% highlight c %}
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+char buf[32];
+int main(int argc, char* argv[], char* envp[]){
+	if(argc<2){
+		printf("pass argv[1] a number\n");
+		return 0;
+	}
+	// atoi() converts string into int
+	// python -c 'print(0x1234)' returns 4660
+	int fd = atoi( argv[1] ) - 0x1234;
+	// as we will se later the program has 0, 1 and 2 file descriptors
+	// after subtraction fd value should be in range of process descriptors
+	int len = 0;
+
+	/*
+	read() attempts to read up to count bytes from file descriptor fd
+  	into the buffer starting at buf.
+	*/
+
+	len = read(fd, buf, 32);
+	if(!strcmp("LETMEWIN\n", buf)){
+		printf("good job :)\n");
+		system("/bin/cat flag");
+		exit(0);
+	}
+	printf("learn about Linux file IO\n");
+	return 0;
+
+}
+{% endhighlight %}
+
+
+As we see from code above the goal is to execute `system()` function. To reach
+the line condition `!strcmp("LETMEWIN\n", buf)` should be true. Ok, but how?
+
+*Start the binary and check which file descriptors it has*
+
+```
+>>> lsof -p $(pgrep fd)
+COMMAND  PID USER   FD   TYPE DEVICE SIZE/OFF   NODE NAME
+...
+fd      .... ....    0u   CHR  ...,.      0t0     .. /dev/pts/.
+fd      .... ....    1u   CHR  ...,.      0t0     .. /dev/pts/.
+fd      .... ....    2u   CHR  ...,.      0t0     .. /dev/pts/.
+```
+
+FD [lsof] basic modes:
+1. **r** for read access
+2. **w** for write access
+3. **u** for read and write access
+
+Interesting, all of the descriptors point to the same space & have same modes.
+Basically STDIN, STDOUT, STDERR linked to single terminal.
+
+## Answer
+
+We can get the flag if we start binary with 0, 1 or 2 file descriptor value and
+enter `LETMEWIN` after that.
+
+[fd]: https://docs.python.org/2/library/os.html#file-descriptor-operations
+[devpts]: https://en.wikipedia.org/wiki/Devpts
+[read]: https://linux.die.net/man/2/read
+[lsof]: http://man7.org/linux/man-pages/man8/lsof.8.html
+[pwnable.kr]: https://pwnable.kr/
